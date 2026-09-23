@@ -97,6 +97,7 @@ http://127.0.0.1:8000/docs
 
 ## Démarrer l'agent
 
+
 Dans un deuxième terminal :
 
 ```bash
@@ -105,6 +106,64 @@ python -m app.agent
 
 L'agent collecte les métriques selon l'intervalle défini dans `.env`
 puis les envoie automatiquement vers `METRICS_ENDPOINT`.
+<!-- -------------------------------------------------------------------- -->
+
+## Conteneurisation avec Docker
+
+Le projet fournit deux Dockerfiles distincts : un pour le développement, un pour la production.
+
+### Lancer en développement (Dockerfile.dev)
+
+Ce mode active le rechargement à chaud (`--reload`) et inclut les dépendances de test (`pytest`).
+
+```bash
+docker build -f Dockerfile.dev -t metrics-agent:dev .
+docker run -d -p 8000:8000 --name metrics-api-dev metrics-agent:dev
+```
+
+Vérifier que l'API répond :
+```bash
+curl http://localhost:8000/health
+```
+
+### Lancer en production (Dockerfile)
+
+Ce mode utilise un build multi-stage, exclut `pytest`, tourne avec un utilisateur non-root, et inclut un `HEALTHCHECK` automatique sur `/health`.
+
+**Construire l'image :**
+```bash
+docker build -t metrics-agent-prod .
+```
+
+**Lancer le service API :**
+```bash
+docker run -d -p 8000:8000 --name metrics-api metrics-agent-prod
+```
+
+**Lancer le service Agent** (même image, commande différente) :
+```bash
+docker run -d --name metrics-agent-worker \
+  -e METRICS_ENDPOINT=http://metrics-api:8000/metrics \
+  metrics-agent-prod python -m app.agent
+```
+
+### Choix technique : une image unique pour l'API et l'agent
+
+L'API (`app.api`) et l'agent (`app.agent`) font partie du même package Python et partagent les mêmes dépendances. Plutôt que de maintenir deux images quasi identiques, une seule image de production (`metrics-agent-prod`) est construite : le `CMD` par défaut lance l'API, et le service agent est démarré en surchargeant simplement la commande au lancement du conteneur (`python -m app.agent`). Cette approche réduit la duplication et simplifie le pipeline CI/CD, qui n'a besoin de builder et publier qu'une seule image.
+
+**Note sur `procps`** : l'image de production installe le paquet système `procps`, nécessaire à la commande `uptime` utilisée par `app/collector.py` pour la collecte de la charge système.
+
+## Orchestration avec Docker Compose
+
+_À compléter (Partie 2)_
+
+## Pipeline CI/CD
+
+_À compléter (Partie 3)_
+
+## Images Docker Hub
+
+_À compléter (Partie 4)_
 
 ## Exemple de configuration
 
