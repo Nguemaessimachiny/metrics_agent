@@ -1,0 +1,15 @@
+# Notre image de base donnée dans le projet
+FROM python:3.12-slim
+
+# Travailler dans le dossier /app du conteneur
+WORKDIR /app
+
+# Copier les fichiers depuis l'ordinateur (. dossier actuel/ . dossier destination /app)
+COPY . . 
+
+# Installer les dépendances liées au fichier requirements.txt
+RUN pip install -r requirements.txt
+
+# uvicorn lance API FastAPI quand l'image est démarrée / reload est utilisée 
+# pour recharger automatiquement l'application en cas de modification du code.
+CMD ["uvicorn", "app.api:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
