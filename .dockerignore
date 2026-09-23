@@ -1,0 +1,15 @@
+# Environnement virtuel Python et fichiers compilés
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Fichiers sensibles - ne jamais copier dans l'image
+.env
+
+# Git et éditeurs
+.git/
+.gitignore
+.vscode/
+.idea/
+
