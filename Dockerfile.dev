@@ -21,6 +21,9 @@ COPY . .
 RUN useradd --create-home appuser
 USER appuser
 
-# uvicorn lance API FastAPI quand l'image est démarrée / reload est utilisée 
-# pour recharger automatiquement l'application en cas de modification du code.
+# Port de l'API FastAPI (à publier avec docker run -p 8000:8000)
+EXPOSE 8000
+
+# uvicorn lance l'API FastAPI ; --reload recharge le code après modification
+# (à combiner avec un montage de volume : -v $(pwd):/app)
 CMD ["uvicorn", "app.api:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

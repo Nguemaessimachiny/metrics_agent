@@ -114,12 +114,24 @@ Le projet fournit deux Dockerfiles distincts : un pour le développement, un pou
 
 ### Lancer en développement (Dockerfile.dev)
 
-Ce mode active le rechargement à chaud (`--reload`) et inclut les dépendances de test (`pytest`).
+Ce mode active le rechargement à chaud (`--reload` + montage du code en volume) et inclut les dépendances de test (`pytest`).
 
+**Construire l'image :**
 ```bash
 docker build -f Dockerfile.dev -t metrics-agent:dev .
-docker run -d -p 8000:8000 --name metrics-api-dev metrics-agent:dev
 ```
+
+**Lancer l'API avec hot-reload** (Linux / macOS) :
+```bash
+docker run -d -p 8000:8000 -v "$(pwd)":/app --name metrics-api-dev metrics-agent:dev
+```
+
+**Lancer l'API avec hot-reload** (Windows PowerShell) :
+```powershell
+docker run -d -p 8000:8000 -v ${PWD}:/app --name metrics-api-dev metrics-agent:dev
+```
+
+Le volume monte le code local dans `/app` : toute modification est prise en compte automatiquement grâce à `--reload`.
 
 Vérifier que l'API répond :
 ```bash
