@@ -1,0 +1,39 @@
+# =============================================================================
+# PARTIE 2 — BONUS : override développement
+# =============================================================================
+# Ce fichier est fusionné AUTOMATIQUEMENT avec docker-compose.yaml
+# dès que tu lances :
+#   docker compose up -d --build
+#
+# Effet : bascule en mode développement
+#   - image Dockerfile.dev (avec pytest + --reload)
+#   - montage du code local en volume (hot-reload)
+#
+# Pour la PRODUCTION (ignorer ce fichier) :
+#   docker compose -f docker-compose.yaml up -d --build
+# =============================================================================
+
+services:
+  api:
+    # Remplace le build prod par le Dockerfile de développement
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    image: metrics-agent:dev
+    # Monte le dossier courant de l'hôte dans /app du conteneur.
+    # → toute modification du code local est visible immédiatement
+    volumes:
+      - .:/app
+    # Active le rechargement à chaud d'uvicorn
+    command: uvicorn app.api:app --host 0.0.0.0 --port 8000 --reload
+
+  agent:
+    # Même image de développement que l'API
+    image: metrics-agent:dev
+    # Monte aussi le code pour que l'agent utilise la version locale
+    volumes:
+      - .:/app
+    command: python -m app.agent
+    # Pas de healthcheck API sur le processus agent
+    healthcheck:
+      disable: true

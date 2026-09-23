@@ -106,15 +106,38 @@ python -m app.agent
 
 L'agent collecte les métriques selon l'intervalle défini dans `.env`
 puis les envoie automatiquement vers `METRICS_ENDPOINT`.
-<!-- -------------------------------------------------------------------- -->
+---
 
-## Conteneurisation avec Docker
+# TP DevOps — Travail réalisé
 
-Le projet fournit deux Dockerfiles distincts : un pour le développement, un pour la production.
+## Prérequis du TP
 
-### Lancer en développement (Dockerfile.dev)
+- Docker Desktop installé et démarré
+- Compte GitHub
+- Compte Docker Hub (Parties 3 et 4)
 
-Ce mode active le rechargement à chaud (`--reload` + montage du code en volume) et inclut les dépendances de test (`pytest`).
+---
+
+## PARTIE 1 — Conteneurisation de l'application (Dockerfiles)
+
+**Objectif :** créer deux Dockerfiles (dev et prod) pour lancer l'API et l'agent dans des conteneurs.
+
+### Ce que nous avons fait
+
+1. Créer `Dockerfile.dev` (développement)
+2. Créer `Dockerfile` (production, multi-stage)
+3. Créer `.dockerignore` pour alléger le contexte de build
+4. Documenter le hot-reload (volume + `--reload`)
+5. Tester les builds et l'endpoint `/health`
+
+### Étape 1.1 — Image de développement (`Dockerfile.dev`)
+
+Cette image :
+- part de `python:3.12-slim`
+- installe toutes les dépendances (y compris `pytest`)
+- utilise un utilisateur non-root `appuser`
+- lance uvicorn avec `--reload`
+- expose le port `8000`
 
 **Construire l'image :**
 ```bash
@@ -131,16 +154,29 @@ docker run -d -p 8000:8000 -v "$(pwd)":/app --name metrics-api-dev metrics-agent
 docker run -d -p 8000:8000 -v ${PWD}:/app --name metrics-api-dev metrics-agent:dev
 ```
 
-Le volume monte le code local dans `/app` : toute modification est prise en compte automatiquement grâce à `--reload`.
+Le volume monte le code local dans `/app` : toute modification est prise en compte grâce à `--reload`.
 
-Vérifier que l'API répond :
+**Vérifier :**
 ```bash
 curl http://localhost:8000/health
 ```
 
-### Lancer en production (Dockerfile)
+Réponse attendue : `{"status":"ok"}`
 
-Ce mode utilise un build multi-stage, exclut `pytest`, tourne avec un utilisateur non-root, et inclut un `HEALTHCHECK` automatique sur `/health`.
+**Arrêter le conteneur :**
+```bash
+docker rm -f metrics-api-dev
+```
+
+### Étape 1.2 — Image de production (`Dockerfile`)
+
+Cette image :
+- utilise un **build multi-stage**
+- n'installe **pas** `pytest`
+- tourne avec un utilisateur non-root
+- définit un **HEALTHCHECK** sur `/health`
+- expose le port `8000`
+- installe `procps` (commande `uptime` pour l'agent)
 
 **Construire l'image :**
 ```bash
@@ -159,23 +195,125 @@ docker run -d --name metrics-agent-worker \
   metrics-agent-prod python -m app.agent
 ```
 
-### Choix technique : une image unique pour l'API et l'agent
+**Vérifier le healthcheck :**
+```bash
+docker inspect --format="{{.State.Health.Status}}" metrics-api
+```
 
-L'API (`app.api`) et l'agent (`app.agent`) font partie du même package Python et partagent les mêmes dépendances. Plutôt que de maintenir deux images quasi identiques, une seule image de production (`metrics-agent-prod`) est construite : le `CMD` par défaut lance l'API, et le service agent est démarré en surchargeant simplement la commande au lancement du conteneur (`python -m app.agent`). Cette approche réduit la duplication et simplifie le pipeline CI/CD, qui n'a besoin de builder et publier qu'une seule image.
+Statut attendu : `healthy`
 
-**Note sur `procps`** : l'image de production installe le paquet système `procps`, nécessaire à la commande `uptime` utilisée par `app/collector.py` pour la collecte de la charge système.
+### Choix technique (Partie 1)
 
-## Orchestration avec Docker Compose
+Une seule image de production (`metrics-agent-prod`) pour l'API et l'agent :
+- le `CMD` par défaut lance l'API
+- l'agent se lance en surchargeant la commande : `python -m app.agent`
+- cela évite de maintenir deux images quasi identiques
 
-_À compléter (Partie 2)_
+---
 
-## Pipeline CI/CD
+## PARTIE 2 — Orchestration avec Docker Compose
 
-_À compléter (Partie 3)_
+**Objectif :** faire communiquer l'API et l'agent via Compose (réseau Docker, `.env`, healthcheck).
 
-## Images Docker Hub
+### Ce que nous avons fait
 
-_À compléter (Partie 4)_
+1. Créer `docker-compose.yaml` avec les services `api` et `agent`
+2. Créer un réseau Docker dédié `metrics-net`
+3. Utiliser `env_file: .env` pour la configuration
+4. Configurer `depends_on` + healthcheck (l'agent attend que l'API soit healthy)
+5. Forcer `METRICS_ENDPOINT=http://api:8000/metrics` pour l'agent (pas `127.0.0.1`)
+6. Ajouter le bonus `docker-compose.override.yml` (mode développement)
+7. Tester que l'agent envoie bien des métriques (`HTTP=201`)
+
+### Étape 2.1 — Préparer le fichier `.env`
+
+Le fichier `.env` n'est **jamais** commité (présent dans `.gitignore`).
+
+```bash
+cp .env.example .env
+```
+
+Windows PowerShell :
+```powershell
+Copy-Item .env.example .env
+```
+
+### Étape 2.2 — Comprendre les services Compose
+
+Fichier : `docker-compose.yaml`
+
+| Service | Rôle | Image | Port |
+|---------|------|-------|------|
+| `api` | API FastAPI | `metrics-agent-prod` | `8000:8000` |
+| `agent` | Collecte et envoi des métriques | `metrics-agent-prod` | — |
+
+Points importants :
+- réseau dédié : `metrics-net`
+- l'agent dépend de l'API : `depends_on` avec `condition: service_healthy`
+- entre conteneurs, l'URL est `http://api:8000/metrics` (nom du service), **pas** `127.0.0.1`
+
+### Étape 2.3 — Lancer en production (Compose)
+
+```bash
+docker compose -f docker-compose.yaml up -d --build
+```
+
+Cette commande :
+1. construit l'image de production
+2. démarre le service `api`
+3. attend que le healthcheck soit `healthy`
+4. démarre le service `agent`
+
+### Étape 2.4 — Vérifier que tout fonctionne
+
+```bash
+curl http://localhost:8000/health
+curl http://localhost:8000/metrics/latest
+docker compose -f docker-compose.yaml ps
+docker compose -f docker-compose.yaml logs agent --tail 20
+```
+
+Résultats attendus :
+- `/health` → `{"status":"ok"}`
+- `/metrics/latest` → un JSON de métriques
+- logs agent → `Métriques envoyées avec succès. HTTP=201`
+
+### Étape 2.5 — Arrêter les services
+
+```bash
+docker compose -f docker-compose.yaml down
+```
+
+### Étape 2.6 — Bonus : mode développement (override)
+
+Fichier : `docker-compose.override.yml`
+
+Avec un simple :
+```bash
+docker compose up -d --build
+```
+
+Compose fusionne automatiquement l'override et active :
+- `Dockerfile.dev`
+- montage du code en volume
+- hot-reload (`--reload`) sur l'API
+
+Pour forcer uniquement la production (sans override) :
+```bash
+docker compose -f docker-compose.yaml up -d --build
+```
+
+---
+
+## PARTIE 3 — Pipeline CI/CD (GitHub Actions)
+
+_À compléter_
+
+---
+
+## PARTIE 4 — Publication Docker Hub et déploiement
+
+_À compléter_
 
 ## Exemple de configuration
 

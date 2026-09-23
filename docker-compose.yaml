@@ -1,0 +1,98 @@
+# =============================================================================
+# PARTIE 2 — Orchestration avec Docker Compose (production)
+# =============================================================================
+# Ce fichier définit 2 services qui tournent ensemble :
+#   - api   : l'API FastAPI (reçoit les métriques)
+#   - agent : collecte CPU/RAM/charge et les envoie à l'API
+#
+# Lancer (production, SANS le mode dev) :
+#   docker compose -f docker-compose.yaml up -d --build
+#
+# Arrêter :
+#   docker compose -f docker-compose.yaml down
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # SERVICE 1 : API FastAPI
+  # ---------------------------------------------------------------------------
+  # Rôle : exposer /health, /metrics, /metrics/latest
+  # Image : Dockerfile de production (multi-stage, non-root, HEALTHCHECK)
+  # ---------------------------------------------------------------------------
+  api:
+    # Construire l'image à partir du Dockerfile de production
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Nom de l'image produite (réutilisée aussi par le service agent)
+    image: metrics-agent-prod
+    # Publier le port 8000 du conteneur sur le port 8000 de la machine hôte
+    # → accessible via http://localhost:8000
+    ports:
+      - "8000:8000"
+    # Charger les variables d'environnement depuis le fichier .env local
+    # (jamais commité ; copier depuis .env.example)
+    env_file:
+      - .env
+    # Relier ce service au réseau privé metrics-net
+    networks:
+      - metrics-net
+    # Healthcheck Compose : Docker vérifie régulièrement que /health répond.
+    # Tant que ce check échoue, le service agent ne démarre pas
+    # (voir depends_on ci-dessous).
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+        ]
+      interval: 30s      # test toutes les 30 secondes
+      timeout: 5s        # échec si pas de réponse en 5s
+      retries: 3         # 3 échecs → statut "unhealthy"
+      start_period: 10s  # délai de grâce au démarrage
+
+  # ---------------------------------------------------------------------------
+  # SERVICE 2 : Agent de collecte
+  # ---------------------------------------------------------------------------
+  # Rôle : collecter les métriques système et les POST vers l'API
+  # Important : entre conteneurs, on n'utilise PAS 127.0.0.1
+  #            on utilise le nom du service Compose : "api"
+  # ---------------------------------------------------------------------------
+  agent:
+    # Même image que l'API (une seule image pour les deux processus)
+    image: metrics-agent-prod
+    # Surcharge du CMD par défaut (qui lance uvicorn) :
+    # ici on lance le processus agent à la place
+    command: python -m app.agent
+    # Charge COLLECTION_INTERVAL, REQUEST_TIMEOUT, etc. depuis .env
+    env_file:
+      - .env
+    environment:
+      # POINT CLÉ du TP :
+      # Dans Docker Compose, chaque service a un hostname = son nom.
+      # L'agent doit donc viser http://api:8000/metrics
+      # (et non http://127.0.0.1:8000/metrics qui viserait lui-même).
+      METRICS_ENDPOINT: http://api:8000/metrics
+    # Ne démarrer l'agent QUE quand l'API est healthy
+    depends_on:
+      api:
+        condition: service_healthy
+    # L'image prod contient un HEALTHCHECK pensé pour l'API (/health).
+    # L'agent n'expose pas d'API → on désactive ce check hérité.
+    healthcheck:
+      disable: true
+    networks:
+      - metrics-net
+
+# =============================================================================
+# RÉSEAU DOCKER DÉDIÉ
+# =============================================================================
+# Relie api et agent sur un réseau privé isolé.
+# Ils peuvent se parler par leur nom de service (ex. "api").
+# =============================================================================
+networks:
+  metrics-net:
+    driver: bridge
