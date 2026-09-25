@@ -1,0 +1,92 @@
+# =============================================================================
+# PARTIE 3 — Pipeline CI/CD GitHub Actions
+# =============================================================================
+# Déclenché à chaque push / pull_request sur main (et Terrence pour les tests).
+# Étapes (dans l'ordre exigé par le TP) :
+#   1. Checkout du code
+#   2. Build de l'image Docker de production
+#   3. Exécution de pytest (le job échoue si un test échoue)
+#   4. Push vers Docker Hub (uniquement si les tests passent)
+#      Tags : latest + SHA du commit
+#
+# Secrets requis (Settings → Secrets and variables → Actions) :
+#   - DOCKERHUB_USERNAME
+#   - DOCKERHUB_TOKEN
+# =============================================================================
+
+name: CI/CD
+
+on:
+  push:
+    branches: [main, Terrence]
+  pull_request:
+    branches: [main]
+
+env:
+  IMAGE_NAME: metrics-agent
+
+jobs:
+  build-test-push:
+    name: Build → Test → Push
+    runs-on: ubuntu-latest
+
+    steps:
+      # ------------------------------------------------------------------
+      # 1. Checkout
+      # ------------------------------------------------------------------
+      - name: Checkout du dépôt
+        uses: actions/checkout@v4
+
+      # ------------------------------------------------------------------
+      # Préparation Docker
+      # ------------------------------------------------------------------
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ------------------------------------------------------------------
+      # 2. Build de l'image de production
+      # ------------------------------------------------------------------
+      - name: Build image Docker de production
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          load: true
+          tags: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      # ------------------------------------------------------------------
+      # 3. Tests pytest (dans l'environnement du job)
+      #    Si un test échoue → le pipeline s'arrête ici (pas de push)
+      # ------------------------------------------------------------------
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installer les dépendances
+        run: pip install --no-cache-dir -r requirements.txt
+
+      - name: Exécuter pytest
+        run: pytest -q
+
+      # ------------------------------------------------------------------
+      # 4. Push Docker Hub (uniquement si les étapes précédentes ont réussi)
+      # ------------------------------------------------------------------
+      - name: Login Docker Hub
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Push image (latest + SHA)
+        if: github.event_name == 'push'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}

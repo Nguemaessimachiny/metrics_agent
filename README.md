@@ -307,7 +307,51 @@ docker compose -f docker-compose.yaml up -d --build
 
 ## PARTIE 3 — Pipeline CI/CD (GitHub Actions)
 
-_À compléter_
+**Objectif :** automatiser build → tests → publication Docker Hub à chaque push.
+
+### Ce que nous avons fait
+
+1. Créer le workflow `.github/workflows/ci-cd.yml`
+2. Restaurer / écrire la suite `tests/` (`pytest`)
+3. Configurer les secrets GitHub `DOCKERHUB_USERNAME` et `DOCKERHUB_TOKEN`
+4. Publier l'image avec les tags `latest` et `<SHA du commit>`
+
+### Étape 3.1 — Secrets GitHub (obligatoire)
+
+Dans le dépôt GitHub : **Settings → Secrets and variables → Actions**
+
+| Secret | Valeur |
+|--------|--------|
+| `DOCKERHUB_USERNAME` | ton username Docker Hub (ex. `terrencetc`) |
+| `DOCKERHUB_TOKEN` | Access Token Docker Hub (Read & Write) |
+
+### Étape 3.2 — Déclenchement
+
+Le pipeline se lance automatiquement sur :
+- chaque **push** sur `main` ou `Terrence`
+- chaque **pull request** vers `main`
+
+### Étape 3.3 — Étapes du pipeline
+
+1. **Checkout** du code
+2. **Build** de l'image de production (`Dockerfile`)
+3. **Test** : `pytest -q` (échec d'un test = pipeline rouge, pas de push)
+4. **Push** Docker Hub (uniquement sur `push`, si les tests passent) :
+   - `terrencetc/metrics-agent:latest`
+   - `terrencetc/metrics-agent:<sha>`
+
+### Étape 3.4 — Vérifier le pipeline
+
+1. Pousser sur GitHub
+2. Onglet **Actions** du dépôt
+3. Ouvrir le workflow **CI/CD** → doit être vert
+
+### Lancer les tests en local
+
+```bash
+pip install -r requirements.txt
+pytest -q
+```
 
 ---
 

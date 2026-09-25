@@ -6,7 +6,7 @@ WORKDIR /app
 
 COPY requirements.txt .
 
-RUN grep -v '^pytest' requirements.txt > requirements.prod.txt
+RUN grep -vE '^(pytest|httpx)' requirements.txt > requirements.prod.txt
 
 # On installe les bibliothèques présentes dans requirements.txt
 RUN pip install --no-cache-dir --prefix=/install -r requirements.prod.txt
