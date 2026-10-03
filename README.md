@@ -418,6 +418,17 @@ docker compose -f docker-compose.hub.yaml down
 | `docker-compose.yaml` | build local (`Dockerfile`) |
 | `docker-compose.hub.yaml` | image Docker Hub `terrencetc/metrics-agent:latest` |
 
+### Preuves de fonctionnement
+
+Captures dans le dossier [`docs/`](docs/) :
+
+| Preuve | Fichier |
+|--------|---------|
+| Pipeline CI/CD vert (GitHub Actions) | ![Pipeline CI/CD](docs/01-github-actions-pipeline.png) |
+| Image publiée sur Docker Hub (`latest` + SHA) | ![Docker Hub](docs/02-docker-hub-tags.png) |
+| Appel API `/health` | ![API health](docs/03-api-health.png) |
+| Appel API `/metrics/latest` | ![API metrics](docs/04-api-metrics-latest.png) |
+
 ## Exemple de configuration
 
 ```env
