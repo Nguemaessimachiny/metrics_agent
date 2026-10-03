@@ -1,0 +1,54 @@
+# =============================================================================
+# PARTIE 4 — Déploiement depuis Docker Hub (SANS build local)
+# =============================================================================
+# Utilise l'image publiée par le pipeline CI/CD :
+#   terrencetc/metrics-agent:latest
+#
+# Commandes :
+#   docker compose -f docker-compose.hub.yaml pull
+#   docker compose -f docker-compose.hub.yaml up -d
+#   docker compose -f docker-compose.hub.yaml down
+# =============================================================================
+
+services:
+  api:
+    # Image publiée sur Docker Hub (pas de section "build")
+    image: terrencetc/metrics-agent:latest
+    ports:
+      # Port hôte 7000 : sur Windows, 8000 peut être réservé par Hyper-V/WSL
+      - "7000:8000"
+    env_file:
+      - .env
+    networks:
+      - metrics-net
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  agent:
+    image: terrencetc/metrics-agent:latest
+    command: python -m app.agent
+    env_file:
+      - .env
+    environment:
+      METRICS_ENDPOINT: http://api:8000/metrics
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    networks:
+      - metrics-net
+
+networks:
+  metrics-net:
+    driver: bridge

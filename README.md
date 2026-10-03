@@ -357,7 +357,66 @@ pytest -q
 
 ## PARTIE 4 — Publication Docker Hub et déploiement
 
-_À compléter_
+**Objectif :** déployer l'application à partir des images publiées sur Docker Hub, **sans rebuild local**.
+
+### Ce que nous avons fait
+
+1. Compte Docker Hub : `terrencetc`
+2. Image publiée automatiquement par le pipeline CI/CD
+3. Fichier `docker-compose.hub.yaml` pour lancer api + agent depuis Docker Hub
+4. Démonstration : `pull` puis `up`, vérification `/health` et `/metrics/latest`
+
+### Images Docker Hub
+
+- Dépôt : https://hub.docker.com/r/terrencetc/metrics-agent
+- Tags : `latest` et `<sha-du-commit>`
+
+### Étape 4.1 — Préparer le `.env`
+
+```bash
+cp .env.example .env
+```
+
+Windows PowerShell :
+```powershell
+Copy-Item .env.example .env -Force
+```
+
+### Étape 4.2 — Déployer depuis Docker Hub (sans build local)
+
+```bash
+docker compose -f docker-compose.hub.yaml pull
+docker compose -f docker-compose.hub.yaml up -d
+```
+
+### Étape 4.3 — Vérifier
+
+```bash
+curl http://localhost:7000/health
+curl http://localhost:7000/metrics/latest
+docker compose -f docker-compose.hub.yaml ps
+docker compose -f docker-compose.hub.yaml logs agent --tail 20
+```
+
+> **Note Windows :** le port hôte est `7000` (mappé vers `8000` dans le conteneur), car `8000` peut être réservé par Hyper-V/WSL.
+
+Résultats attendus :
+- `/health` → `{"status":"ok"}`
+- logs agent → `HTTP=201`
+- conteneurs `api` et `agent` actifs
+
+### Étape 4.4 — Arrêter
+
+```bash
+docker compose -f docker-compose.hub.yaml down
+```
+
+### Différence avec la Partie 2
+
+| Fichier | Source de l'image |
+|---------|-------------------|
+| `docker-compose.yaml` | build local (`Dockerfile`) |
+| `docker-compose.hub.yaml` | image Docker Hub `terrencetc/metrics-agent:latest` |
 
 ## Exemple de configuration
 
